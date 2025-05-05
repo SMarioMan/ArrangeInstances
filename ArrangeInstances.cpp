@@ -134,6 +134,27 @@ void FocusProcesses(const std::vector<HWND>& processes) {
   return;
 }
 
+// Explanation of how the optimal tiling is found in constant time:
+// Constraint: To display all instances, we want to have N instances tiled in a rows * columns grid, so:
+// • rows * columns = N
+// Constraint: To maximize screen usage, we want the number of columns and rows to reshape the effective instanceRatio to match the screen's ratio, so:
+// • (columns / rows) * instanceRatio = screenRatio
+// N, instanceRatio, and screenRatio are known.
+// To find the optimal tiling, solve the system of equations.
+// • rows * columns = N
+// • columns = N/rows
+// Substitution:
+// • (columns / rows) * instanceRatio = screenRatio
+// • (N / rows^2) * instanceRatio = screenRatio
+// • rows^2 = instanceRatio/(screenRatio*N)
+// • rows = sqrt(instanceRatio/(screenRatio*N))
+// Then, since we know the number of rows:
+// • columns = N/rows
+// Which solves for columns.
+// If we could have fractional rows and columns, as the system of equations solves for, we would perfectly fill the screen every time.
+// Since this is not possible, we use the fractional part of the rows and columns count to determine which needs an extra row/column to accommodate all instances.
+// Whichever remainder is higher should work better.
+// Sometimes it's still not enough and we must add both an extra row and an extra column.
 std::tuple<int, int> GetOptimalTiling(const double& screenRatio,
                                       const double& instanceRatio,
                                       const int& instanceCount) {
