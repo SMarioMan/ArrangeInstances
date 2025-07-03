@@ -11,27 +11,6 @@
 #include <tuple>
 #include <vector>
 
-bool skip = true;
-
-// TODO: This is non-functional.
-BOOL CALLBACK EnumChildProc(HWND hWnd, LPARAM lParam) {
-  char class_name[80];
-  GetClassName(hWnd, class_name, sizeof(class_name));
-  std::cout << "DEBUG: " << class_name << std::endl;
-  if (strcmp(class_name, "Qt5153QWindowIcon") == 0) {
-    if (skip) {
-      skip = false;
-      std::cout << "Skipping first Qt5153QWindowIcon" << std::endl;
-    } else {
-      // RemoveWindowSubclass(hwnd, (SUBCLASSPROC)SubclassProc, uIdSubclass);
-      EnableWindow(hWnd, FALSE);
-      std::cout << "Disabled second Qt5153QWindowIcon" << std::endl;
-      return FALSE;
-    }
-  }
-  return TRUE;
-}
-
 void DisableWindowStyle(const HWND& hWnd) {
   // The styles to disable.
   const LONG_PTR style = WS_DLGFRAME |               // Dialog frame
@@ -41,11 +20,6 @@ void DisableWindowStyle(const HWND& hWnd) {
                          WS_TILEDWINDOW | 0xC40000;  // "Full state"
   LONG_PTR currentStyle = GetWindowLongPtr(hWnd, GWL_STYLE);
   SetWindowLongPtr(hWnd, GWL_STYLE, currentStyle & ~style);
-
-  skip = true;
-  if (!EnumChildWindows(hWnd, EnumChildProc, NULL)) {
-    std::cout << "Failed to remove Qt5153QWindowIcon2" << std::endl;
-  }
 }
 
 FILETIME GetWindowCreationTime(HWND hWnd) {
@@ -78,8 +52,8 @@ void SortByCreation(std::vector<HWND>& hWndVector) {
   std::sort(hWndVector.begin(), hWndVector.end(), CompareHwndByCreationTime);
 }
 
-struct MyParams {
-  MyParams(const std::regex& regex) : regex(regex) {}
+struct EnumWindowsParams {
+  EnumWindowsParams(const std::regex& regex) : regex(regex) {}
   std::vector<HWND> matchingWindows;
   const std::regex regex;
 };
@@ -95,7 +69,7 @@ std::string WindowTitle(const HWND& hWnd) {
 }
 
 BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam) {
-  MyParams* params = reinterpret_cast<MyParams*>(lParam);
+  EnumWindowsParams* params = reinterpret_cast<EnumWindowsParams*>(lParam);
   if (!params) return FALSE;
 
   std::string windowTitle = WindowTitle(hWnd);
@@ -111,7 +85,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam) {
 }
 
 std::vector<HWND> GetProcesses(const std::regex& regex) {
-  MyParams params(regex);
+  EnumWindowsParams params(regex);
   EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&params));
 
   std::cout << "Found " << params.matchingWindows.size()
@@ -125,23 +99,13 @@ std::vector<HWND> GetProcesses(const std::regex& regex) {
   return params.matchingWindows;
 }
 
-void FocusProcesses(const std::vector<HWND>& processes) {
-  for (const auto process : processes) {
-    SetForegroundWindow(process);
-  }
-  HWND hDesktop = GetDesktopWindow();
-  SetFocus(hDesktop);
-  return;
-}
-
 // Explanation of how the optimal tiling is found in constant time:
-// Constraint: To display all instances, we want to have N instances tiled in a rows * columns grid, so:
-// • rows * columns = N
-// Constraint: To maximize screen usage, we want the number of columns and rows to reshape the effective instanceRatio to match the screen's ratio, so:
-// • (columns / rows) * instanceRatio = screenRatio
-// N, instanceRatio, and screenRatio are known.
-// To find the optimal tiling, solve the system of equations.
-// • rows * columns = N
+// Constraint: To display all instances, we want to have N instances tiled in a
+// rows * columns grid, so: • rows * columns = N Constraint: To maximize screen
+// usage, we want the number of columns and rows to reshape the effective
+// instanceRatio to match the screen's ratio, so: • (columns / rows) *
+// instanceRatio = screenRatio N, instanceRatio, and screenRatio are known. To
+// find the optimal tiling, solve the system of equations. • rows * columns = N
 // • columns = N/rows
 // Substitution:
 // • (columns / rows) * instanceRatio = screenRatio
@@ -151,10 +115,13 @@ void FocusProcesses(const std::vector<HWND>& processes) {
 // Then, since we know the number of rows:
 // • columns = N/rows
 // Which solves for columns.
-// If we could have fractional rows and columns, as the system of equations solves for, we would perfectly fill the screen every time.
-// Since this is not possible, we use the fractional part of the rows and columns count to determine which needs an extra row/column to accommodate all instances.
+// If we could have fractional rows and columns, as the system of equations
+// solves for, we would perfectly fill the screen every time. Since this is not
+// possible, we use the fractional part of the rows and columns count to
+// determine which needs an extra row/column to accommodate all instances.
 // Whichever remainder is higher should work better.
-// Sometimes it's still not enough and we must add both an extra row and an extra column.
+// Sometimes it's still not enough and we must add both an extra row and an
+// extra column.
 std::tuple<int, int> GetOptimalTiling(const double& screenRatio,
                                       const double& instanceRatio,
                                       const int& instanceCount) {
@@ -222,8 +189,7 @@ void PlaceWindows(
   for (std::size_t i = 0; i < instances.size(); i++) {
     const int xPos = (i % numWide) * width;
     const int yPos = (i / numWide) * height;
-    BOOL res = SetWindowPos(instances[i], NULL, xPos, yPos, width, height,
-                            SWP_SHOWWINDOW);
+    SetWindowPos(instances[i], NULL, xPos, yPos, width, height, SWP_SHOWWINDOW);
   }
 }
 
