@@ -4,7 +4,7 @@ Arranges windows that match a given regular expression to maximize screen space 
 ## Building
 1. Open Developer Command Prompt for VS 2022
 1. `cd` to this repo.
-1. Run `cl /EHsc /std:c++17 ArrangeInstances.cpp /link User32.lib`. This will generate `ArrangeInstances.exe`.
+1. Run `cl /EHsc /std:c++17 /O2 /W4 /WX /GL /Fe:ArrangeInstances.exe ArrangeInstances.cpp /link /LTCG /OPT:REF /OPT:ICF`. This will generate `ArrangeInstances.exe`.
 
 ## Running
 This tool expects two arguments:
