@@ -1,6 +1,3 @@
-// Build command:
-// cl /EHsc /std:c++17 ArrangeInstances.cpp /link User32.lib
-
 #include <Windows.h>
 #include <shellapi.h>
 #include <tlhelp32.h>
@@ -65,7 +62,7 @@ void RestoreAllStyles() {
   }
 }
 
-void DisableStyle(const HWND& hWnd) {
+void DisableStyle(HWND hWnd) {
   // The styles to disable.
   const LONG_PTR mask = WS_CAPTION | WS_BORDER | WS_DLGFRAME | WS_SYSMENU |
                         WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
@@ -173,14 +170,12 @@ struct EnumWindowsParams {
   const std::unordered_set<DWORD> excludedPids;
 };
 
-std::string WindowTitle(const HWND& hWnd) {
+std::string WindowTitle(HWND hWnd) {
   int length = GetWindowTextLength(hWnd);
-  char* buffer = new char[length + 1];
-  if (!buffer) return "Error";
-  GetWindowTextA(hWnd, buffer, length + 1);
-  std::string windowTitle(buffer);
-  delete[] buffer;
-  return windowTitle;
+  if (length == 0) return "";
+  std::vector<char> buffer(length + 1);
+  GetWindowTextA(hWnd, buffer.data(), length + 1);
+  return std::string(buffer.data());
 }
 
 BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam) {
@@ -255,16 +250,15 @@ std::vector<HWND> GetProcesses(const std::regex& regex) {
 // Whichever remainder is higher should work better.
 // Sometimes it's still not enough and we must add both an extra row and an
 // extra column.
-std::tuple<int, int> GetOptimalTiling(const double& screenRatio,
-                                      const double& instanceRatio,
-                                      const int& instanceCount) {
+std::tuple<std::size_t, std::size_t> GetOptimalTiling(
+    double screenRatio, double instanceRatio, std::size_t instanceCount) {
   double targetRatio = screenRatio / instanceRatio;
   double h = sqrt(instanceCount / targetRatio);
   double w = instanceCount / h;
   std::cout << "h: " << h << "\t"
             << "w: " << w << std::endl;
-  int numTall = static_cast<int>(h);
-  int numWide = static_cast<int>(w);
+  std::size_t numTall = static_cast<std::size_t>(h);
+  std::size_t numWide = static_cast<std::size_t>(w);
   // Determine if rounding must occur.
   double remTall = h - numTall;
   double remWide = w - numWide;
@@ -272,24 +266,22 @@ std::tuple<int, int> GetOptimalTiling(const double& screenRatio,
             << "numWide: " << numWide << std::endl;
   std::cout << "remTall: " << remTall << "\t"
             << "remWide: " << remWide << std::endl;
-  if (remTall > 0 || remWide > 0) {
-    // TODO: Could floating point precision errors make us think we need to do
-    // this, even when we don't?
+  // If we do not have enough space to fit all instances, add an extra row or
+  // column, whichever minimizes the violation of the target aspect ratio.
+  // Decrement the remainder to ensure we alternate between increasing the
+  // number of rows or columns until we can fit the desired instance count.
+  while (numTall * numWide < instanceCount) {
     if (remTall > remWide) {
       numTall++;
-      if (numTall * numWide < instanceCount) {
-        numWide++;
-      }
+      remTall--;
     } else {
       numWide++;
-      if (numTall * numWide < instanceCount) {
-        numTall++;
-      }
+      remWide--;
     }
   }
   std::cout << "numTall: " << numTall << "\t"
             << "numWide: " << numWide << std::endl;
-  return std::make_tuple(numWide, numTall);
+  return {numWide, numTall};
 }
 
 std::tuple<int, int> GetDesktopResolution() {
@@ -300,16 +292,18 @@ std::tuple<int, int> GetDesktopResolution() {
   // The top left corner will have coordinates (0,0)
   // and the bottom right corner will have coordinates
   // (horizontal, vertical)
-  return std::make_tuple(desktop.right, desktop.bottom);
+  return {static_cast<std::size_t>(desktop.right),
+          static_cast<std::size_t>(desktop.bottom)};
 }
 
-void PlaceWindows(
-    const std::vector<HWND>& instances, const double& instanceRatio,
-    const std::optional<std::tuple<int, int>>& tiling = std::nullopt) {
+void PlaceWindows(const std::vector<HWND>& instances, double instanceRatio,
+                  const std::optional<std::tuple<std::size_t, std::size_t>>&
+                      tiling = std::nullopt) {
   const auto [screenW, screenH] = GetDesktopResolution();
-  int numWide, numTall;
-  if (tiling == std::nullopt) {
-    double screenRatio = (double)screenW / (double)screenH;
+  std::size_t numWide, numTall;
+  if (!tiling) {
+    double screenRatio =
+        static_cast<double>(screenW) / static_cast<double>(screenH);
     std::tie(numWide, numTall) =
         GetOptimalTiling(screenRatio, instanceRatio, instances.size());
   } else {
